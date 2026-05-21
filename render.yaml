@@ -17,4 +17,4 @@ services:
     startCommand: cd frontend && npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://image-processor-frontend.onrender.com
+        value: https://image-processor-backend-4p92.onrender.com
