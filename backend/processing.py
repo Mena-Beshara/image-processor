@@ -9,25 +9,35 @@ def validate_image(file_bytes: bytes, max_mb: float = 50.0) -> Image.Image:
     if len(file_bytes) > max_mb * 1024 * 1024:
         raise ValueError(f"File exceeds {max_mb}MB limit")
     img = Image.open(io.BytesIO(file_bytes))
-    if img.mode not in ("RGB", "RGBA", "L"):
+    # Only accept RGB or RGBA - convert everything else to RGB
+    if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
     return img
 
 
-def _autocontrast_rgba(img: Image.Image) -> Image.Image:
-    """ImageOps.autocontrast doesn't support RGBA; split, process, re-merge."""
-    if img.mode != "RGBA":
+def _autocontrast_safe(img: Image.Image) -> Image.Image:
+    """
+    Safe autocontrast that works with any mode.
+    ImageOps.autocontrast only supports L and RGB modes.
+    For RGBA, we split channels, process RGB, re-merge.
+    """
+    if img.mode == "RGBA":
+        # Split into channels
+        r, g, b, a = img.split()
+        # Merge RGB and apply autocontrast
+        rgb = Image.merge("RGB", (r, g, b))
+        rgb = ImageOps.autocontrast(rgb, cutoff=1)
+        # Split back and re-merge with original alpha
+        r, g, b = rgb.split()
+        return Image.merge("RGBA", (r, g, b, a))
+    else:
+        # L or RGB mode - autocontrast works directly
         return ImageOps.autocontrast(img, cutoff=1)
-    r, g, b, a = img.split()
-    rgb = Image.merge("RGB", (r, g, b))
-    rgb = ImageOps.autocontrast(rgb, cutoff=1)
-    r, g, b = rgb.split()
-    return Image.merge("RGBA", (r, g, b, a))
 
 
 def enhance_style_1(img: Image.Image) -> Image.Image:
     """Style 1: Auto contrast + sharpness boost."""
-    img = _autocontrast_rgba(img)
+    img = _autocontrast_safe(img)
     enhancer = ImageEnhance.Sharpness(img)
     img = enhancer.enhance(1.5)
     return img
@@ -37,6 +47,7 @@ def enhance_style_2(img: Image.Image) -> Image.Image:
     """Style 2: 4x upscale with high-quality resampling."""
     w, h = img.size
     img = img.resize((w * 4, h * 4), Image.Resampling.LANCZOS)
+    # Slight sharpening after upscale
     enhancer = ImageEnhance.Sharpness(img)
     img = enhancer.enhance(1.2)
     return img
@@ -71,6 +82,7 @@ def generate_final(
     canvas_h: int,
 ) -> bytes:
     """Generate final PNG: enhance, fit + center on transparent canvas."""
+    # Enhance per style
     if style == 1:
         img = enhance_style_1(img)
     elif style == 2:
@@ -81,17 +93,22 @@ def generate_final(
         raise ValueError("style must be 1, 2, or 3")
 
     img_w, img_h = img.size
+    # Compute scale to fit inside canvas while preserving aspect ratio
     scale = min(canvas_w / img_w, canvas_h / img_h)
     new_w = int(img_w * scale)
     new_h = int(img_h * scale)
 
+    # Resize to fit
     img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
+    # Create transparent canvas
     canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
+    # Handle transparency: convert to RGBA if needed
     if img.mode != "RGBA":
         img = img.convert("RGBA")
 
+    # Center paste
     x = (canvas_w - new_w) // 2
     y = (canvas_h - new_h) // 2
     canvas.paste(img, (x, y), img)
