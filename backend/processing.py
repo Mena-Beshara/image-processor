@@ -16,11 +16,18 @@ def validate_image(file_bytes: bytes, max_mb: float = 50.0) -> Image.Image:
 
 def enhance_style_1(img: Image.Image) -> Image.Image:
     """Style 1: Auto contrast + sharpness boost."""
-    img = ImageOps.autocontrast(img, cutoff=1)
+    # ImageOps.autocontrast doesn't support RGBA; split, process RGB, re-merge
+    if img.mode == 'RGBA':
+        r, g, b, a = img.split()
+        rgb = Image.merge('RGB', (r, g, b))
+        rgb = ImageOps.autocontrast(rgb, cutoff=1)
+        r, g, b = rgb.split()
+        img = Image.merge('RGBA', (r, g, b, a))
+    else:
+        img = ImageOps.autocontrast(img, cutoff=1)
     enhancer = ImageEnhance.Sharpness(img)
     img = enhancer.enhance(1.5)
     return img
-
 
 def enhance_style_2(img: Image.Image) -> Image.Image:
     """Style 2: 4x upscale with high-quality resampling."""
