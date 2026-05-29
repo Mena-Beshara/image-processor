@@ -11,7 +11,7 @@ services:
     runtime: node
     plan: free
     buildCommand: cd frontend && npm install && npm run build
-    startCommand: cd frontend && npm start
+    startCommand: cd frontend && node .next/standalone/server.js
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://image-processor-backend-4p92.onrender.com  # ← your real URL
+        value: https://image-processor-backend-4p92.onrender.com
